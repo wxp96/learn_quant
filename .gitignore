@@ -1,0 +1,49 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+user_settings.json
+system_settings.json
+.openbb_platform/
+
+# Local data, logs, and generated outputs
+data/
+logs/
+output/
+outputs/
+*.log
+*.sqlite
+*.sqlite3
+
