@@ -59,8 +59,11 @@ def index():
     fetch("vix_index", obb.cboe.index.historical, symbol="VIX", start_date=START)
 
 
-def backtest_momentum(data, lookback=MOMENTUM_DAYS, cost_bps=COST_BPS):
-    """昨日动量 > 0，今日开盘全仓；否则今日开盘空仓。不做空、不加杠杆。"""
+def backtest_momentum(data, lookback=MOMENTUM_DAYS, cost_bps=COST_BPS,
+                      rule="momentum"):
+    """用昨日动量或昨日价格与均线的关系决定今日开盘仓位。"""
+    if rule not in {"momentum", "ma"}:
+        raise ValueError("rule 必须为 momentum 或 ma")
     if lookback < 1 or not 0 <= cost_bps < 10_000:
         raise ValueError("动量周期必须为正数，交易成本必须在 [0, 10000) 基点内")
     data = data.copy()
@@ -78,11 +81,17 @@ def backtest_momentum(data, lookback=MOMENTUM_DAYS, cost_bps=COST_BPS):
     data["momentum"] = data["close"].pct_change(lookback, fill_method=None)
     data["previous_momentum"] = data["momentum"].shift(1)
     data["previous_close"] = data["close"].shift(1)
-    # 等待完整的动量窗口；两种策略都从同一天开盘开始，保证比较起点一致。
+    data["moving_average"] = data["close"].rolling(lookback).mean()
+    data["previous_ma"] = data["moving_average"].shift(1)
+    # 统一等待动量窗口，均线策略也从同一天开始，便于三种规则公平比较。
     data = data.loc[data["previous_momentum"].notna()].copy()
     if data.empty:
         raise ValueError(f"至少需要 {lookback + 2} 行行情")
-    data["position"] = (data["previous_momentum"] > 0).astype(int)
+    if rule == "momentum":
+        data["position"] = (data["previous_momentum"] > 0).astype(int)
+    else:
+        # 昨日收盘价高于昨日均线，今日开盘持有；等于或低于则空仓。
+        data["position"] = (data["previous_close"] > data["previous_ma"]).astype(int)
     data["previous_position"] = data["position"].shift(1, fill_value=0)
     data["turnover"] = (data["position"] - data["previous_position"]).abs()
     data["overnight_return"] = data["open"] / data["previous_close"] - 1
@@ -105,8 +114,9 @@ def backtest_momentum(data, lookback=MOMENTUM_DAYS, cost_bps=COST_BPS):
     return data
 
 
-def momentum_compare():
-    """批量比较动量择时与买入持有，保存逐日明细和汇总。"""
+def momentum_compare(rule="momentum"):
+    """批量比较指定择时规则与买入持有，保存逐日明细和汇总。"""
+    label = "动量" if rule == "momentum" else "价格高于均线"
     rows = []
     OUTPUT.mkdir(parents=True, exist_ok=True)
     for symbol in SYMBOLS:
@@ -122,8 +132,8 @@ def momentum_compare():
                 continue
             data.index = pd.to_datetime(data.index)
             data = data.loc[data.index >= pd.Timestamp(START)]
-            result = backtest_momentum(data)
-            result.to_csv(OUTPUT / f"{symbol.lower()}_momentum_backtest.csv")
+            result = backtest_momentum(data, rule=rule)
+            result.to_csv(OUTPUT / f"{symbol.lower()}_{rule}_backtest.csv")
             row = {"symbol": symbol, "start": result.index[0].date(),
                    "end": result.index[-1].date(), "days": len(result),
                    "trades": int(result["turnover"].sum()),
@@ -137,18 +147,18 @@ def momentum_compare():
                 row[f"{name}_final_value"] = equity.iloc[-1]
             row["excess_return"] = row["strategy_return"] - row["buy_hold_return"]
             rows.append(row)
-            print(f"{symbol}：动量 {row['strategy_return']:.2%}，"
+            print(f"{symbol}：{label} {row['strategy_return']:.2%}，"
                   f"买入持有 {row['buy_hold_return']:.2%}，"
                   f"收益差 {row['excess_return']:.2%}，买卖合计 {row['trades']} 次")
         except (ValueError, KeyError) as exc:
             print(f"{symbol} 回测失败：{exc}")
     if rows:
         summary = pd.DataFrame(rows)
-        summary.to_csv(OUTPUT / "momentum_summary.csv", index=False)
-        print("汇总已保存：", OUTPUT / "momentum_summary.csv")
+        summary.to_csv(OUTPUT / f"{rule}_summary.csv", index=False)
+        print("汇总已保存：", OUTPUT / f"{rule}_summary.csv")
         print("收益列为小数；各标的独立计算，并非组合收益。")
 
 
 if __name__ == "__main__":
     run({"prices": prices, "compare": compare, "index": index,
-         "momentum": momentum_compare})
+         "momentum": momentum_compare, "ma": lambda: momentum_compare("ma")})
