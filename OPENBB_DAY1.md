@@ -512,3 +512,13 @@ print(response.extra)
 - [ ] 如何获取一只 ETF 的历史价格？
 - [ ] 如何判断一个数据源能不能用于回测？
 
+
+### 第五部分配套代码
+
+已按 5.1–5.6 创建 [day1_section5](day1_section5/README.md)，每节一个 Python 文件，包含数据获取、中文注释及 CSV 保存。建议先运行：
+
+```bash
+.venv/bin/python day1_section5/01_prices.py
+```
+
+用 `--help` 查看每节可选示例；FRED / EIA 的凭证配置见文件夹内 README。
